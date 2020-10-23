@@ -1,5 +1,5 @@
 "use strict";
-module.exports = class RedisFn {
+export default class RedisFn {
     constructor(client) {
         this.client = client;
     }

@@ -1,15 +1,16 @@
 "use strict";
-const cluster = require('cluster');
-const os = require('os');
-const venom = require('venom-bot');
-const fs = require('fs');
-const RedisFn = require('./fnredis');
-const Redis = require('ioredis');
+import { isWorker, worker as _worker, isMaster, fork, on } from 'cluster';
+import { cpus } from 'os';
+import { create } from 'venom-bot';
+import { existsSync, unlinkSync, writeFile } from 'fs';
+import RedisFn from './fnredis';
+import Redis from 'ioredis';
+import { parse } from 'flatted';
+
 const client = new Redis();
 const clientsFn = new RedisFn(client);
-const CircularJSON = require('flatted');
 
-if (cluster.isWorker) {
+if (isWorker) {
     var express = require('express');
     var app = express();
 
@@ -24,7 +25,7 @@ if (cluster.isWorker) {
     }));
 
     io.on('connection', function (socket) {
-        socket.emit('data', 'connected to worker: ' + cluster.worker.id);
+        socket.emit('data', 'connected to worker: ' + _worker.id);
     });
 
     (async function () {
@@ -41,11 +42,10 @@ if (cluster.isWorker) {
                 success: true,
                 message: 'Venom foi iniciado, leia o qrcode'
             });
-            if (fs.existsSync(__dirname + '/qrcode.png')) {
-                fs.unlinkSync(__dirname + '/qrcode.png');
+            if (existsSync(__dirname + '/qrcode.png')) {
+                unlinkSync(__dirname + '/qrcode.png');
             }
-            venom
-                .create(
+            create(
                     // session
                     'clientVenom',
                     // exporting qrcode
@@ -60,7 +60,7 @@ if (cluster.isWorker) {
                         response.data = new Buffer.from(matches[2], 'base64');
 
                         var imageBuffer = response;
-                        fs.writeFile(
+                        writeFile(
                             'qrcode.png',
                             imageBuffer['data'],
                             'binary',
@@ -92,8 +92,8 @@ if (cluster.isWorker) {
                     }
                 )
                 .then(async (client) => {
-                    if (fs.existsSync(__dirname + '/qrcode.png')) {
-                        fs.unlinkSync(__dirname + '/qrcode.png');
+                    if (existsSync(__dirname + '/qrcode.png')) {
+                        unlinkSync(__dirname + '/qrcode.png');
                     }
                     console.log(client)
                     // let clientobj = CircularJSON.stringify(client);
@@ -126,7 +126,7 @@ if (cluster.isWorker) {
         let clientVenom = await clientsFn.get("clientVenom");
         clientVenom = JSON.parse(clientVenom)
         clientVenom = (clientVenom && clientVenom.client != 'false') ? clientVenom.client : false;
-        if (fs.existsSync(__dirname + '/qrcode.png')) {
+        if (existsSync(__dirname + '/qrcode.png')) {
             res.sendFile('qrcode.png', {
                 root: __dirname
             });
@@ -155,7 +155,7 @@ if (cluster.isWorker) {
         let chatId = req.query.numero;
         let msg = req.query.msg;
         if (clientVenom && clientVenom != false) {
-            clientVenom = CircularJSON.parse(clientVenom)
+            clientVenom = parse(clientVenom)
             console.log(clientVenom)
             if (chatId && msg) {
                 msg = msg.replace(/<br>/gi, "\n");
@@ -191,7 +191,7 @@ if (cluster.isWorker) {
     });
 }
 
-if (cluster.isMaster) {
+if (isMaster) {
     // we create a HTTP server, but we do not use listen
     // that way, we have a socket.io server that doesn't accept connections
     var server = require('http').createServer();
@@ -211,11 +211,11 @@ if (cluster.isMaster) {
         port: 6379
     }));
 
-    for (var i = 0; i < os.cpus().length; i++) {
-        cluster.fork();
+    for (var i = 0; i < cpus().length; i++) {
+        fork();
     }
 
-    cluster.on('exit', function (worker, code, signal) {
+    on('exit', function (worker, code, signal) {
         console.log('worker ' + worker.process.pid + ' died');
     });
 }
